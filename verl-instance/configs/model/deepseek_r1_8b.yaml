@@ -1,0 +1,16 @@
+# Model configuration for DeepSeek-R1-0528-Qwen3-8B
+model:
+  name: deepseek_r1_8b
+  pretrained_model_name_or_path: deepseek-ai/DeepSeek-R1-0528-Qwen3-8B
+  dtype: bfloat16
+  
+  # veRL-specific configuration
+  enable_gradient_checkpointing: true
+  enable_activation_offload: false
+  trust_remote_code: false
+  
+  # Override config for specific model tweaks (if needed)
+  override_config:
+    model_config: {}
+    # Note: All model architecture details are automatically loaded 
+    # from the HuggingFace model configuration 

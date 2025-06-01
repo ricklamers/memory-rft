@@ -1,0 +1,90 @@
+# Main configuration for Podcast PPO training with SGLang
+defaults:
+  - _self_
+  - override /model: deepseek_r1_8b
+  - override /reward: podcast
+  - override /backend: torch_fsdp
+
+# Run configuration
+run:
+  output_dir: runs/podcast_ppo_sglang
+  total_steps: 200000
+  eval_interval: 1000
+  save_interval: 5000
+  resume_from: null
+
+# Data configuration
+data:
+  train_dataset: data/podcast_questions.jsonl
+  max_prompt_length: 512
+  max_response_length: 512
+  train_batch_size: 256
+
+# Environment configuration
+env:
+  n_env: 8  # Number of parallel environments
+  sglang_url: http://localhost:30000
+  judge_url: http://localhost:30000  # Use same server for judging
+  use_local_judge: true
+
+# Algorithm configuration
+algo:
+  name: ppo
+  kl_beta: 0.05
+  clip_ratio: 0.2
+  value_loss_coef: 0.5
+  entropy_coef: 0.01
+
+# Actor rollout configuration for SGLang
+actor_rollout_ref:
+  rollout:
+    name: sglang  # Use SGLang for rollouts
+    temperature: 0.7
+    top_p: 0.95
+    max_tokens: 512
+    stop: ["<|user|>", "</think>"]
+    
+  actor:
+    ppo_epochs: 4
+    ppo_mini_batch_size: 256
+    ppo_micro_batch_size_per_gpu: 32
+    grad_clip: 1.0
+    
+    optim:
+      name: AdamW
+      lr: 1.0e-5
+      betas: [0.9, 0.999]
+      weight_decay: 0.0
+      
+    lr_scheduler:
+      name: cosine
+      num_warmup_steps: 500
+      num_training_steps: ${run.total_steps}
+      
+    checkpoint:
+      interval: 1000
+      max_to_keep: 3
+      contents: [model, optimizer, extra]
+
+# Critic configuration
+critic:
+  optim:
+    name: AdamW
+    lr: 5.0e-6
+    betas: [0.9, 0.999]
+    weight_decay: 0.0
+
+# Tracking configuration
+tracker:
+  project_name: podcast_rlhf_sglang
+  experiment_name: ppo_deepseek_r1_8b
+  default_backend: ["console", "wandb"]
+  wandb:
+    entity: null  # Set your wandb entity
+    project: podcast_rlhf
+
+# Backend configuration
+backend:
+  name: torch_fsdp
+  strategy: FULL_SHARD
+  mixed_precision: bf16 

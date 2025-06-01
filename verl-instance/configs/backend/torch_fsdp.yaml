@@ -1,0 +1,16 @@
+# PyTorch FSDP Backend Configuration
+backend:
+  name: torch_fsdp
+  strategy: FULL_SHARD
+  mixed_precision: bf16
+  
+  # FSDP specific settings
+  fsdp_config:
+    wrap_policy:
+      min_num_params: 0
+    param_offload: false
+    optimizer_offload: false
+    
+  # Training settings
+  gradient_checkpointing: true
+  activation_offloading: false 

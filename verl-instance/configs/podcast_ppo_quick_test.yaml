@@ -1,0 +1,44 @@
+defaults:
+  - _self_
+  - override /model: deepseek_r1_8b
+  - override /reward: podcast
+
+# Quick test run configuration
+run:
+  output_dir: runs/podcast_ppo_quick_test
+  total_steps: 10  # Very few steps for quick test
+  eval_interval: 5
+  save_interval: 10
+  resume_from: null
+
+# Minimal data configuration
+data:
+  train_dataset: data/podcast_questions_mini.jsonl
+  max_prompt_length: 256  # Shorter for speed
+  max_response_length: 128  # Shorter for speed
+  train_batch_size: 2  # Very small batch
+
+# Environment configuration
+env:
+  n_env: 1  # Single environment for quick test
+  sglang_url: http://localhost:30000
+  judge_url: http://localhost:30000
+  use_local_judge: true
+
+# Minimal algorithm configuration
+algo:
+  name: ppo
+  kl_beta: 0.01
+  clip_ratio: 0.2
+  value_loss_coef: 0.5
+  entropy_coeff: 0.01
+  
+# Trainer settings for quick test
+trainer:
+  total_epochs: 1  # Just one epoch
+  project_name: verl_quick_test
+  experiment_name: podcast_quick_test
+  logger: ['console']  # Console only, no wandb
+  n_gpus_per_node: 1
+  save_freq: -1  # Don't save during quick test
+  test_freq: 10

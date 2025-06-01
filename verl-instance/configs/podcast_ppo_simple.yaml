@@ -1,0 +1,180 @@
+# Simplified Podcast PPO Configuration (no overrides)
+defaults:
+  - _self_
+
+# Model configuration (inline)
+model:
+  name: deepseek_r1_8b
+  pretrained_model_name_or_path: deepseek-ai/DeepSeek-R1-0528-Qwen3-8B
+  dtype: bfloat16
+  trust_remote_code: true
+  gradient_checkpointing: true
+
+# Reward configuration (inline)
+reward:
+  name: podcast_semantic_correctness
+  custom_reward_function:
+    path: podcast_reward.py
+    name: compute_score
+  extra_reward_config:
+    judge_url: http://localhost:30000
+    use_local_judge: true
+
+# Backend configuration (inline)
+backend:
+  name: torch_fsdp
+  strategy: FULL_SHARD
+  mixed_precision: bf16
+
+# Quick test run configuration
+run:
+  output_dir: runs/podcast_ppo_simple_test
+  total_steps: 5  # Very minimal for quick test
+  eval_interval: 2
+  save_interval: 10
+  resume_from: null
+
+# Minimal data configuration
+data:
+  tokenizer: null
+  train_files: data/podcast_questions_mini.jsonl
+  val_files: null
+  prompt_key: question
+  max_prompt_length: 256
+  max_response_length: 128
+  train_batch_size: 1  # Minimal batch size
+  return_raw_input_ids: false
+  return_raw_chat: false
+  return_full_prompt: false
+  shuffle: true
+  filter_overlong_prompts: false
+  truncation: error
+  trust_remote_code: true
+
+# Algorithm configuration
+algorithm:
+  name: ppo
+  kl_beta: 0.01
+  clip_ratio: 0.2
+  value_loss_coef: 0.5
+  entropy_coef: 0.01
+
+# Actor rollout configuration
+actor_rollout_ref:
+  hybrid_engine: true
+  model:
+    path: deepseek-ai/DeepSeek-R1-0528-Qwen3-8B
+    external_lib: null
+    override_config:
+      model_config: {}
+    enable_gradient_checkpointing: true
+    enable_activation_offload: false
+    trust_remote_code: true
+    use_remove_padding: false
+    
+  rollout:
+    name: sglang
+    temperature: 0.7
+    top_p: 0.95
+    max_new_tokens: 128
+    prompt_length: 256
+    response_length: 128
+    dtype: bfloat16
+    gpu_memory_utilization: 0.5
+    ignore_eos: false
+    enforce_eager: true
+    free_cache_engine: true
+    do_sample: true
+    sglang_url: http://localhost:30000
+    engine_kwargs:
+      sglang:
+        attention_backend: null
+    n: 1
+    val_kwargs:
+      temperature: 0
+      n: 1
+      do_sample: false
+    
+  actor:
+    strategy: fsdp
+    ppo_epochs: 1
+    ppo_mini_batch_size: 1
+    ppo_micro_batch_size_per_gpu: 1
+    ppo_max_token_len_per_gpu: 384  # prompt + response
+    grad_clip: 1.0
+    clip_ratio: 0.2
+    entropy_coeff: 0.01
+    use_kl_loss: false
+    use_torch_compile: false
+    ppo_epochs: 1
+    data_loader_seed: 42
+    shuffle: false
+    
+    optim:
+      lr: 1e-5
+      lr_warmup_steps: 1
+      lr_warmup_steps_ratio: 0.0
+      min_lr_ratio: 0.0
+      num_cycles: 0.5
+      warmup_style: constant
+      total_training_steps: 5
+      
+    fsdp_config:
+      wrap_policy:
+        min_num_params: 0
+      param_offload: false
+      optimizer_offload: false
+      fsdp_size: -1
+      
+    checkpoint:
+      contents: ['model', 'optimizer', 'extra']
+      
+  ref:
+    fsdp_config:
+      param_offload: false
+            wrap_policy:
+        min_num_params: 0
+    log_prob_micro_batch_size_per_gpu: 1
+    log_prob_use_dynamic_bsz: false
+    log_prob_max_token_len_per_gpu: 384
+
+# Critic configuration
+critic:
+  strategy: fsdp
+  optim:
+    lr: 5e-6
+    lr_warmup_steps: 1
+    lr_warmup_steps_ratio: 0.0
+    total_training_steps: 5
+  fsdp_config:
+    wrap_policy:
+      min_num_params: 0
+    param_offload: false
+    optimizer_offload: false
+
+# Reward model configuration  
+reward_model:
+  enable: false
+  
+# Ray configuration
+ray_init:
+  address: null
+  num_cpus: null
+  num_gpus: null
+  object_store_memory: null
+  
+# Trainer configuration  
+trainer:
+  total_epochs: 1
+  project_name: verl_simple_test
+  experiment_name: podcast_simple_test
+  logger: ['console']
+  nnodes: 1
+  n_gpus_per_node: 1
+  save_freq: -1
+  test_freq: 5
+  val_before_train: false
+  critic_warmup: 0
+  default_hdfs_dir: null
+  default_local_dir: checkpoints/verl_simple_test
+  resume_mode: disable 

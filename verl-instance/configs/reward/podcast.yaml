@@ -1,0 +1,19 @@
+# Reward configuration for podcast QA
+reward:
+  name: podcast_semantic_correctness
+  
+  # Custom reward function following veRL specification
+  custom_reward_function:
+    path: podcast_reward.py
+    name: compute_score  # Default function name for veRL
+  
+  # Additional configuration passed to reward function via extra_info
+  extra_reward_config:
+    judge_url: http://localhost:30000  # Same as SGLang server
+    use_local_judge: true
+  
+  # Optional: use version with tool penalty
+  # custom_reward_function:
+  #   path: podcast_reward.py  
+  #   name: compute_score_with_tool_penalty
+  # tool_penalty: -0.1  # Penalty per tool call 
