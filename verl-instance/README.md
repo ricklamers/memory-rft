@@ -1,176 +1,108 @@
-# Podcast Memory Retrieval with veRL and SGLang
+# Podcast Memory RFT with veRL
 
-This project implements a reinforcement learning system that trains a language model to answer questions about podcast content using a memory retrieval tool. The model learns to call a retrieval function during its chain-of-thought reasoning to fetch relevant transcript chunks.
+A reinforcement learning training pipeline that teaches language models to perform memory retrieval during Chain-of-Thought (CoT) reasoning using the veRL framework.
+
+## Overview
+
+This project implements **in-CoT tool execution** for podcast memory retrieval using PPO (Proximal Policy Optimization). The model learns to:
+
+- Generate structured CoT reasoning with `<think>...</think>` tags
+- Make real-time tool calls during generation using `#call memory_retrieval {...}` 
+- Process actual tool results and continue reasoning
+- Retrieve relevant information from a podcast knowledge base
+
+## Key Components
+
+### RL Training with veRL
+- **Framework**: [veRL](https://github.com/volcengine/verl) for distributed PPO training
+- **Model**: DeepSeek-R1-0528-Qwen3-8B as both actor and critic
+- **Custom Rollout**: `CoTToolSGLangRollout` enables in-CoT tool execution during generation
+- **Reward Function**: Custom scoring based on CoT quality and tool usage patterns
+
+### In-CoT Tool Calling System
+```python
+# Example of learned behavior:
+<think>
+The user is asking about a specific topic. Let me search my memory for relevant information.
+</think>
+
+#call memory_retrieval {"query": "specific topic from user question"}
+
+<think>
+Based on the retrieved information: [tool results], I can now provide a comprehensive answer...
+</think>
+```
+
+### Memory Infrastructure
+- **Vector DB**: LanceDB for efficient similarity search
+- **Data Pipeline**: Automated transcript processing, chunking, and QA pair generation
+- **API Layer**: Fast retrieval service for real-time tool calls during training
+
+## Quick Start
+
+### 1. Setup Memory Database
+```bash
+# Process podcast transcripts and build vector index
+cd dataset_utils
+python transcript_to_chunks.py
+python create_embeddings.py
+python ingest_to_lancedb.py
+```
+
+### 2. Launch Training
+```bash
+# Start PPO training with in-CoT tool execution
+python run_podcast_ppo_with_cot_tools.py
+```
+
+The training will:
+- Patch the SGLang rollout to use our custom `CoTToolSGLangRollout`
+- Enable real tool calls during model generation
+- Train the model to use memory retrieval effectively in its reasoning
+
+### 3. Configuration
+Key settings in `configs/podcast_ppo_working.yaml`:
+- `max_tool_calls_per_cot: 5` - Limit tool calls per reasoning chain
+- `max_segment_length: 256` - Tokens generated before checking for tool calls
+- Custom reward function weights CoT quality and tool usage
+
+## Training Approach
+
+The model learns through PPO to:
+1. **Identify** when external memory is needed during reasoning
+2. **Formulate** appropriate search queries for the memory system  
+3. **Integrate** retrieved information into ongoing CoT reasoning
+4. **Generate** high-quality responses using both internal knowledge and retrieved context
+
+This creates an agent that can dynamically access external memory while maintaining natural reasoning flow.
 
 ## Architecture
 
-- **Model**: DeepSeek-R1-0528-Qwen3-8B (8B parameter reasoning model)
-- **RL Framework**: veRL with PPO algorithm
-- **Inference Engine**: SGLang for efficient serving
-- **Memory Retrieval**: Mock retriever (can be replaced with real vector DB)
-- **Reward**: LLM judge evaluating semantic correctness
-
-## Components
-
-### 1. Memory Tool (`memory_tool.py`)
-- Mock retriever returning fake podcast transcript chunks
-- Replace with real FAISS/LanceDB implementation for production
-
-### 2. CoT Tool Wrapper (`cot_tool_sglang.py`)
-- Handles streaming generation with SGLang
-- Detects `#call memory_retrieval {...}` in `<think>` blocks
-- Injects retrieval results back into reasoning
-
-### 3. Reward Function (`podcast_reward.py`)
-- Uses LLM judge to score semantic correctness
-- Accepts variants (e.g., "Japan" for "country with capital Tokyo")
-- Optional tool usage penalty
-
-### 4. Environment (`verl_env.py`)
-- Integrates agent, retriever, and reward function
-- Single-turn Q&A episodes
-
-## Setup
-
-### Prerequisites
-
-1. **In Docker container (verl)**:
-   ```bash
-   cd /workspace/verl
-   pip install -e .[sglang]
-   ```
-
-2. **Start SGLang server** (in Docker container):
-   ```bash
-   python -m sglang.launch_server \
-     --model-path deepseek-ai/DeepSeek-R1-0528-Qwen3-8B \
-     --port 30000 \
-     --dtype bfloat16 \
-     --mem-fraction-static 0.85
-   ```
-
-### Directory Structure
 ```
-memory-rft/verl-instance/
-├── configs/
-│   ├── model/
-│   │   └── deepseek_r1_8b.yaml
-│   ├── reward/
-│   │   └── podcast.yaml
-│   └── podcast_ppo.yaml
-├── data/
-│   └── podcast_questions.jsonl
-├── memory_tool.py
-├── cot_tool_sglang.py
-├── podcast_reward.py
-├── verl_env.py
-├── run_podcast_ppo.py
-├── test_components.py
-└── README.md
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   PPO Training  │───▶│  CoT Generation  │───▶│ Memory Retrieval│
+│   (veRL)        │    │  with Tools      │    │   (LanceDB)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌──────────────────┐             │
+         └──────────────│  Reward Function │◀────────────┘
+                        │   (CoT + Tools)  │
+                        └──────────────────┘
 ```
 
-## Usage
+## Files Structure
 
-### 1. Test Components
-```bash
-python test_components.py
-```
+- `run_podcast_ppo_with_cot_tools.py` - Main training script with custom rollout
+- `custom_sglang_rollout.py` - In-CoT tool execution implementation  
+- `configs/podcast_ppo_working.yaml` - PPO training configuration
+- `dataset_utils/` - Memory system components (transcripts, embeddings, QA generation)
+- `podcast_reward_with_tools.py` - Custom reward function for tool usage
 
-### 2. Run PPO Training
-```bash
-python run_podcast_ppo.py
-```
+## Requirements
 
-### 3. Override Configuration
-```bash
-python run_podcast_ppo.py \
-  actor_rollout_ref.actor.optim.lr=5e-6 \
-  run.total_steps=100000 \
-  tracker.experiment_name=my_experiment
-```
-
-## Configuration
-
-### Key Parameters (in `configs/podcast_ppo.yaml`)
-
-- **Learning rate**: `1e-5` for actor, `5e-6` for critic
-- **Batch size**: 256 tokens
-- **PPO epochs**: 4
-- **KL penalty**: 0.05
-- **Temperature**: 0.7
-
-### Memory/Compute Requirements
-
-- **1 × H100 80GB**: ~4 hours for full training
-- **4 × H100 80GB**: ~1 hour (recommended)
-- **8 × H100 80GB**: ~35 minutes
-
-## Monitoring
-
-- **Console**: Real-time metrics during training
-- **WandB**: Loss curves, rewards, KL divergence
-- **Checkpoints**: Saved every 1000 steps
-
-## Example Interaction
-
-**Question**: "Which country did Joe Rogan visit in 2024?"
-
-**Model reasoning**:
-```
-<think>
-I need to find information about Joe Rogan's travels in 2024.
-#call memory_retrieval {"query": "Joe Rogan 2024 visit country", "k": 3}
-
-#memory_retrieval_result:
-[1] In episode 1823, Joe Rogan discussed his recent trip to Japan...
-[2] ...
-
-Based on the retrieved information, Joe visited Japan in 2024.
-</think>
-
-Joe Rogan visited Japan in 2024, where he explored Tokyo and experienced the local culture.
-```
-
-## Customization
-
-### Use Real Memory Retrieval
-Replace `MockMemoryRetriever` in `memory_tool.py` with:
-```python
-class MemoryRetriever:
-    def __init__(self, index_path, embedder):
-        self.index = faiss.read_index(index_path)
-        self.embedder = SentenceTransformer(embedder)
-        # ... implement real retrieval
-```
-
-### Use External Judge
-Modify `podcast_reward.py` to use GPT-4 or other APIs:
-```python
-if not use_local_judge:
-    # Call OpenAI/Anthropic API
-    response = openai.chat.completions.create(...)
-```
-
-### Add Tool Usage Penalty
-In `configs/reward/podcast.yaml`:
-```yaml
-reward:
-  compute_score_fn: podcast_with_tool_penalty
-  tool_penalty: -0.1
-```
-
-## Troubleshooting
-
-1. **SGLang connection error**: Ensure server is running on port 30000
-2. **OOM errors**: Reduce `ppo_micro_batch_size_per_gpu`
-3. **Slow training**: Check GPU utilization, increase batch size
-
-## Future Improvements
-
-- [ ] Real vector database integration
-- [ ] Multi-turn conversations
-- [ ] Citation tracking in responses
-- [ ] Streaming tool calls for better UX
-- [ ] GRPO algorithm option for faster training 
-
-verl version ab97d9b2906b44612b024d016081f553b39b8a30
+- veRL framework
+- SGLang for model serving
+- LanceDB for vector storage
+- DeepSeek model access
+- Multi-GPU setup (8 GPUs recommended)
