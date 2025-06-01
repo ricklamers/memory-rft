@@ -5,9 +5,9 @@ defaults:
 # Run configuration
 run:
   output_dir: runs/podcast_ppo_working_test
-  total_steps: 5
+  total_steps: 2
   eval_interval: 2
-  save_interval: 10
+  save_interval: 1
   resume_from: null
 
 # Data configuration
@@ -75,7 +75,7 @@ actor_rollout_ref:
         min_num_params: 0
       param_offload: false
       optimizer_offload: false
-      fsdp_size: -1
+      fsdp_size: 8
       
     checkpoint:
       contents: ['model', 'optimizer', 'extra']
@@ -99,7 +99,7 @@ actor_rollout_ref:
     prompt_length: 256
     response_length: 128
     dtype: bfloat16
-    gpu_memory_utilization: 0.3
+    gpu_memory_utilization: 0.5
     ignore_eos: false
     enforce_eager: true
     free_cache_engine: true
@@ -109,9 +109,10 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: 1
     log_prob_use_dynamic_bsz: false
     log_prob_max_token_len_per_gpu: 384
-    tensor_model_parallel_size: 4
-    max_num_batched_tokens: 2048
-    max_num_seqs: 256
+    tensor_model_parallel_size: 8
+    max_num_batched_tokens: 512
+    max_num_seqs: 16
+    max_model_len: 8192
     engine_kwargs:
       sglang:
         attention_backend: null
@@ -124,6 +125,10 @@ actor_rollout_ref:
     multi_turn:
       enable: false
       tool_config_path: null
+      max_turns: 2
+    # Custom CoT tool calling parameters
+    max_tool_calls_per_cot: 5  # Maximum number of tool calls in a single CoT
+    max_segment_length: 256    # Maximum tokens to generate before checking for tool calls
 
 # Critic configuration
 critic:
@@ -157,7 +162,7 @@ critic:
         min_num_params: 0
       param_offload: false
       optimizer_offload: false
-      fsdp_size: -1
+      fsdp_size: 8
   optim:
     lr: 5e-6
     lr_warmup_steps: 1
@@ -176,9 +181,9 @@ reward_model:
   enable: false
   launch_reward_fn_async: false
 
-# Custom reward function
+# Custom reward function - Uses CoT + tool calling pattern rewards
 custom_reward_function:
-  path: podcast_reward.py
+  path: podcast_reward_with_tools.py
   name: compute_score
   use_local_judge: false
   judge_url: null
