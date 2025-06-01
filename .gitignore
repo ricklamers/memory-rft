@@ -66,3 +66,5 @@ coverage.xml
 runs/
 checkpoints/
 logs/
+.history/
+dataset/
