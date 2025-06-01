@@ -9,3 +9,5 @@ __pycache__/
 *.pyz
 *.pywz
 *.pyzw
+lex_fridman*
+.env

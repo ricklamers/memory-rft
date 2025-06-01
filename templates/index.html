@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lex Fridman Transcript Search</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 15px;
+            line-height: 1.6;
+            overflow-x: hidden; /* Prevent horizontal scroll */
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 30px 10px;
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 5vw, 3rem); /* Responsive font size */
+            font-weight: 700;
+            background: linear-gradient(135deg, #4f46e5, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            word-break: break-word; /* Prevent text overflow */
+        }
+
+        .header p {
+            font-size: clamp(1rem, 3vw, 1.2rem); /* Responsive font size */
+            color: #a0a0a0;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 0 10px;
+        }
+
+        .search-section {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 100%;
+        }
+
+        .search-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+        }
+
+        /* Responsive grid for filters */
+        .form-row.filters {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        @media (min-width: 640px) {
+            .form-row.filters {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .form-row.filters {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            min-width: 0; /* Allow flex items to shrink */
+        }
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #e0e0e0;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 12px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            width: 100%;
+            min-width: 0; /* Allow shrinking */
+            max-width: 100%; /* Prevent overflow */
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #4f46e5;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .search-input {
+            font-size: 1.1rem !important;
+            padding: 16px 20px !important;
+        }
+
+        .search-button {
+            background: linear-gradient(135deg, #4f46e5, #06b6d4);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(79, 70, 229, 0.3);
+        }
+
+        .search-button:active {
+            transform: translateY(0);
+        }
+
+        .results-section {
+            margin-top: 30px;
+            width: 100%;
+        }
+
+        .results-header {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        @media (min-width: 768px) {
+            .results-header {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+        }
+
+        .results-header h2 {
+            font-size: clamp(1.5rem, 4vw, 1.8rem);
+            color: #ffffff;
+        }
+
+        .search-meta {
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        .result-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+            width: 100%;
+            word-wrap: break-word; /* Prevent text overflow */
+        }
+
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-color: rgba(79, 70, 229, 0.3);
+        }
+
+        .result-header {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        @media (min-width: 640px) {
+            .result-header {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+        }
+
+        .result-episode {
+            font-weight: 600;
+            color: #4f46e5;
+            font-size: clamp(1rem, 3vw, 1.1rem);
+            word-break: break-word;
+        }
+
+        .result-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            color: #a0a0a0;
+            font-size: 0.9rem;
+            align-items: center;
+        }
+
+        .result-speaker,
+        .result-time {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            white-space: nowrap;
+            font-size: 0.8rem;
+        }
+
+        .result-speaker {
+            background: rgba(79, 70, 229, 0.2);
+        }
+
+        .result-time {
+            background: rgba(6, 182, 212, 0.2);
+        }
+
+        .result-transcript {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: #e0e0e0;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+        }
+
+        .no-results h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        .stats-bar {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: #a0a0a0;
+            word-wrap: break-word;
+        }
+
+        @media (min-width: 640px) {
+            .stats-bar {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+        }
+
+        .highlight {
+            background: rgba(255, 255, 0, 0.2);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #a0a0a0;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: #4f46e5;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 30px 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #a0a0a0;
+            font-size: 0.9rem;
+        }
+
+        /* Enhanced mobile optimizations */
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+            
+            .search-section {
+                padding: 15px;
+                border-radius: 15px;
+            }
+            
+            .result-card {
+                padding: 15px;
+                border-radius: 12px;
+            }
+            
+            .form-group input,
+            .form-group select {
+                font-size: 16px; /* Prevent zoom on iOS */
+            }
+            
+            .search-button {
+                padding: 14px 24px;
+                font-size: 1rem;
+            }
+            
+            .result-meta {
+                gap: 8px;
+            }
+            
+            .result-speaker,
+            .result-time {
+                font-size: 0.75rem;
+                padding: 3px 8px;
+            }
+        }
+
+        /* Ensure all text is responsive and doesn't overflow */
+        h1, h2, h3, p, span, div {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+        }
+
+        /* Ensure form elements don't cause horizontal scroll */
+        input, select, button {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Lex Fridman Transcript Search</h1>
+            <p>Search through 98 episodes and 52,827 transcript segments using AI-powered semantic search</p>
+        </div>
+
+        <div class="search-section">
+            <form class="search-form" method="post" action="/search_form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="query">Search Query</label>
+                        <input 
+                            type="text" 
+                            id="query" 
+                            name="query" 
+                            class="search-input"
+                            placeholder="Ask about artificial intelligence, philosophy, technology..."
+                            value="{{ query or '' }}"
+                            required
+                        >
+                    </div>
+                </div>
+                
+                <div class="form-row filters">
+                    <div class="form-group">
+                        <label for="episode_filter">Filter by Episode</label>
+                        <select id="episode_filter" name="episode_filter">
+                            <option value="">All Episodes</option>
+                            {% for episode in episodes %}
+                            <option value="{{ episode }}" 
+                                {% if selected_episode == episode %}selected{% endif %}>
+                                {{ episode.replace('-', ' ').title() }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="speaker_filter">Filter by Speaker</label>
+                        <select id="speaker_filter" name="speaker_filter">
+                            <option value="">All Speakers</option>
+                            {% for speaker in speakers %}
+                            <option value="{{ speaker }}"
+                                {% if selected_speaker == speaker %}selected{% endif %}>
+                                {{ speaker }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="limit">Number of Results</label>
+                        <select id="limit" name="limit">
+                            <option value="5">5 Results</option>
+                            <option value="10" selected>10 Results</option>
+                            <option value="20">20 Results</option>
+                            <option value="50">50 Results</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <button type="submit" class="search-button">
+                        🔍 Search Transcripts
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        {% if results %}
+        <div class="results-section">
+            <div class="stats-bar">
+                <span>Found {{ total_results }} results for "{{ query }}"</span>
+                <span>Search completed in {{ "%.1f"|format(search_time) }}ms</span>
+            </div>
+            
+            <div class="results-header">
+                <h2>Search Results</h2>
+                <div class="search-meta">
+                    Showing {{ results|length }} of {{ total_results }} results
+                </div>
+            </div>
+            
+            {% for result in results %}
+            <div class="result-card">
+                <div class="result-header">
+                    <div class="result-episode">{{ result.episode.replace('-', ' ').title() }}</div>
+                    <div class="result-meta">
+                        <span class="result-speaker">👤 {{ result.speaker }}</span>
+                        <span class="result-time">⏰ {{ result.time }}</span>
+                    </div>
+                </div>
+                <div class="result-transcript">{{ result.transcript }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% elif query %}
+        <div class="no-results">
+            <h3>No Results Found</h3>
+            <p>Try adjusting your search terms or removing filters</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>
+                Built with LanceDB, OpenAI Embeddings, and FastAPI<br>
+                Transcripts from {{ episodes|length }} Lex Fridman podcast episodes
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-focus search input
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('query');
+            if (searchInput && !searchInput.value) {
+                searchInput.focus();
+            }
+        });
+
+        // Show loading state on form submit
+        document.querySelector('.search-form').addEventListener('submit', function() {
+            const button = document.querySelector('.search-button');
+            button.innerHTML = '<div class="spinner"></div> Searching...';
+            button.disabled = true;
+        });
+    </script>
+</body>
+</html> 

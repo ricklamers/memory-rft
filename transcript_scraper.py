@@ -1,7 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-from urllib.parse import urljoin # Added for joining relative URLs
+import os
+import re
+from urllib.parse import urljoin, urlparse # Added for joining relative URLs
 
 def get_latest_episode_transcript_urls(podcast_page_url, limit=100):
     """
@@ -197,31 +199,103 @@ def scrape_transcript(url):
         "content": content
     }
 
-def scrape_multiple_episodes(episode_urls):
+def scrape_multiple_episodes(episode_urls, output_directory="transcripts"):
     """
-    Scrapes transcripts for multiple Lex Fridman podcast episodes.
+    Scrapes transcripts for multiple Lex Fridman podcast episodes and saves each as a separate file.
 
     Args:
         episode_urls: A list of URLs for the transcript pages.
+        output_directory: Directory where individual transcript files will be saved.
 
     Returns:
-        A list of dictionaries, where each dictionary contains the scraped
-        transcript data for an episode.
+        A list of dictionaries containing metadata about the scraped files.
     """
-    all_transcripts = []
-    for url in episode_urls:
-        print(f"Scraping: {url}")
+    # Create output directory if it doesn't exist
+    os.makedirs(output_directory, exist_ok=True)
+    
+    successfully_scraped = []
+    failed_scrapes = []
+    
+    for i, url in enumerate(episode_urls, 1):
+        print(f"Scraping {i}/{len(episode_urls)}: {url}")
         transcript_data = scrape_transcript(url)
+        
         if transcript_data:
-            all_transcripts.append(transcript_data)
+            # Create a safe filename from the URL or episode title
+            # Extract the episode identifier from URL (e.g., "oliver-anthony-transcript" from the URL)
+            parsed_url = urlparse(url)
+            url_path = parsed_url.path.strip('/')
+            
+            # Remove '-transcript' suffix if present and clean the filename
+            filename_base = url_path.replace('-transcript', '').replace('/', '_')
+            filename_base = re.sub(r'[^\w\-_]', '', filename_base)  # Remove special characters
+            
+            # Ensure filename isn't too long
+            if len(filename_base) > 100:
+                filename_base = filename_base[:100]
+            
+            filename = f"{filename_base}.json"
+            filepath = os.path.join(output_directory, filename)
+            
+            # Handle duplicate filenames by adding a number
+            counter = 1
+            original_filepath = filepath
+            while os.path.exists(filepath):
+                name, ext = os.path.splitext(original_filepath)
+                filepath = f"{name}_{counter}{ext}"
+                counter += 1
+            
+            # Save the individual transcript file
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                
+                successfully_scraped.append({
+                    "url": url,
+                    "filename": os.path.basename(filepath),
+                    "filepath": filepath,
+                    "episode": transcript_data.get("episode", "Unknown Episode"),
+                    "speakers": transcript_data.get("speakers", []),
+                    "content_segments": len(transcript_data.get("content", []))
+                })
+                print(f"  ✓ Saved to: {filepath}")
+                
+            except Exception as e:
+                print(f"  ✗ Error saving file: {e}")
+                failed_scrapes.append({"url": url, "error": str(e)})
         else:
-            print(f"Failed to scrape: {url}")
-        print("-" * 20)
-    return all_transcripts
+            print(f"  ✗ Failed to scrape transcript")
+            failed_scrapes.append({"url": url, "error": "Failed to scrape transcript"})
+        
+        print("-" * 50)
+    
+    # Save a summary/index file
+    summary = {
+        "total_episodes": len(episode_urls),
+        "successfully_scraped": len(successfully_scraped),
+        "failed_scrapes": len(failed_scrapes),
+        "output_directory": output_directory,
+        "scraped_files": successfully_scraped,
+        "failed_urls": failed_scrapes
+    }
+    
+    summary_filepath = os.path.join(output_directory, "scraping_summary.json")
+    with open(summary_filepath, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    
+    print(f"\n📊 SCRAPING SUMMARY:")
+    print(f"   Total episodes attempted: {summary['total_episodes']}")
+    print(f"   Successfully scraped: {summary['successfully_scraped']}")
+    print(f"   Failed: {summary['failed_scrapes']}")
+    print(f"   Output directory: {output_directory}")
+    print(f"   Summary saved to: {summary_filepath}")
+    
+    return successfully_scraped
 
 if __name__ == "__main__":
     podcast_home_url = "https://lexfridman.com/podcast"
     number_of_episodes_to_scrape = 100 # Target 100 latest episodes
+    output_dir = "lex_fridman_transcripts"  # Directory for all transcript files
 
     print(f"Attempting to fetch the latest {number_of_episodes_to_scrape} transcript URLs from {podcast_home_url}")
     episode_urls_to_scrape = get_latest_episode_transcript_urls(podcast_home_url, limit=number_of_episodes_to_scrape)
@@ -229,40 +303,24 @@ if __name__ == "__main__":
     if not episode_urls_to_scrape:
         print("No episode URLs found to scrape. Exiting.")
     else:
-        print(f"Proceeding to scrape {len(episode_urls_to_scrape)} transcripts.")
-        # Example usage:
-        # Replace with a list of URLs you want to scrape
-        # example_urls = [
-        #     "https://lexfridman.com/oliver-anthony-transcript/",
-        #     "https://lexfridman.com/yuval-noah-harari-transcript/", # Example of another episode
-        #     "https://lexfridman.com/elon-musk-3-transcript/" 
-        #     # Add more URLs here
-        # ]
+        print(f"Proceeding to scrape {len(episode_urls_to_scrape)} transcripts into separate files.")
+        print(f"Output directory: {output_dir}")
+        
+        scraped_files = scrape_multiple_episodes(episode_urls_to_scrape, output_directory=output_dir)
 
-        scraped_data = scrape_multiple_episodes(episode_urls_to_scrape) # Use the fetched URLs
-
-        if scraped_data:
-            # Save to a JSON file
-            output_filename = "lex_fridman_transcripts.json"
-            with open(output_filename, 'w', encoding='utf-8') as f:
-                json.dump(scraped_data, f, ensure_ascii=False, indent=4)
-            print(f"Successfully scraped {len(scraped_data)} transcripts.")
-            print(f"Output saved to {output_filename}")
-
-            # Print a summary of the first scraped transcript as an example
-            if scraped_data[0].get("content"): # Check if content key exists and is not empty
-                print("\n--- Example of first transcript entry ---")
-                print(f"Episode: {scraped_data[0]['episode']}")
-                print(f"Speakers: {', '.join(scraped_data[0]['speakers'])}")
-                print("First few content entries:")
-                for i, entry in enumerate(scraped_data[0]["content"][:3]):
-                    print(f"  Time: {entry['time']}, Speaker: {entry['speaker']}, Text: {entry['transcript'][:50]}...")
-                if not scraped_data[0]["content"]: # This check is redundant due to .get() and outer if, but defensive
-                     print("  No content found for the first episode.")
-            elif "episode" in scraped_data[0]: # If no content, but we have an episode title (e.g. failed scrape)
-                 print(f"\n--- First transcript entry for {scraped_data[0]['episode']} has no content. ---")
-            else:
-                print("\nFirst episode scraped had no content or episode title.")
-
+        if scraped_files:
+            print(f"\n🎉 Successfully created {len(scraped_files)} transcript files!")
+            
+            # Show a few examples
+            print("\n📝 Example transcript files created:")
+            for i, file_info in enumerate(scraped_files[:5]):  # Show first 5
+                print(f"   {i+1}. {file_info['filename']}")
+                print(f"      Episode: {file_info['episode'][:80]}{'...' if len(file_info['episode']) > 80 else ''}")
+                print(f"      Speakers: {', '.join(file_info['speakers'])}")
+                print(f"      Segments: {file_info['content_segments']}")
+                print()
+            
+            if len(scraped_files) > 5:
+                print(f"   ... and {len(scraped_files) - 5} more files")
         else:
-            print("No transcripts were scraped successfully.") 
+            print("❌ No transcripts were scraped successfully.") 
