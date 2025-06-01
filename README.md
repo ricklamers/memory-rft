@@ -1,271 +1,108 @@
-# 🎙️ Lex Fridman Transcript Search Engine
+# Podcast Memory RFT with veRL
 
-A powerful semantic search engine for Lex Fridman podcast transcripts, powered by OpenAI embeddings and LanceDB vector database.
+A reinforcement learning training pipeline that teaches language models to perform memory retrieval during Chain-of-Thought (CoT) reasoning using the veRL framework.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Python](https://img.shields.io/badge/python-3.8+-green)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-red)
-![LanceDB](https://img.shields.io/badge/LanceDB-0.22+-orange)
+## Overview
 
-## 📋 Overview
+This project implements **in-CoT tool execution** for podcast memory retrieval using PPO (Proximal Policy Optimization). The model learns to:
 
-This project creates a complete pipeline for:
-1. **Scraping** Lex Fridman podcast transcripts
-2. **Chunking** transcripts into searchable segments
-3. **Embedding** chunks using OpenAI's `text-embedding-3-small` model
-4. **Storing** embeddings in LanceDB vector database
-5. **Searching** with both semantic and text-based queries
-6. **Web Interface** for easy searching and browsing
+- Generate structured CoT reasoning with `<think>...</think>` tags
+- Make real-time tool calls during generation using `#call memory_retrieval {...}` 
+- Process actual tool results and continue reasoning
+- Retrieve relevant information from a podcast knowledge base
 
-## 🚀 Features
+## Key Components
 
-### 🔍 **Semantic Search**
-- AI-powered search using OpenAI embeddings
-- Find conceptually similar content, not just keyword matches
-- Search across 52,827 transcript segments from 98 episodes
+### RL Training with veRL
+- **Framework**: [veRL](https://github.com/volcengine/verl) for distributed PPO training
+- **Model**: DeepSeek-R1-0528-Qwen3-8B as both actor and critic
+- **Custom Rollout**: `CoTToolSGLangRollout` enables in-CoT tool execution during generation
+- **Reward Function**: Custom scoring based on CoT quality and tool usage patterns
 
-### 🎯 **Advanced Filtering**
-- Filter by specific episodes
-- Filter by speaker (Lex Fridman, guests, etc.)
-- Adjustable result limits (5-50 results)
+### In-CoT Tool Calling System
+```python
+# Example of learned behavior:
+<think>
+The user is asking about a specific topic. Let me search my memory for relevant information.
+</think>
 
-### ⚡ **High Performance**
-- Blazing fast vector similarity search with LanceDB
-- Batch processing for efficient embedding generation
-- 3,455+ chunks processed per minute during ingestion
+#call memory_retrieval {"query": "specific topic from user question"}
 
-### 🌐 **Beautiful Web Interface**
-- Modern, responsive design
-- Real-time search with loading states
-- Mobile-optimized interface
-- Dark theme with gradient accents
+<think>
+Based on the retrieved information: [tool results], I can now provide a comprehensive answer...
+</think>
+```
 
-### 📊 **Rich Results**
-- Episode information and metadata
-- Speaker identification
-- Timestamp information
-- Similarity scores for semantic search
+### Memory Infrastructure
+- **Vector DB**: LanceDB for efficient similarity search
+- **Data Pipeline**: Automated transcript processing, chunking, and QA pair generation
+- **API Layer**: Fast retrieval service for real-time tool calls during training
 
-## 📦 Installation
+## Quick Start
 
-### Prerequisites
-- Python 3.8+
-- OpenAI API Key (for embeddings)
-
-### Setup
-
-1. **Clone the repository:**
+### 1. Setup Memory Database
 ```bash
-git clone <repository-url>
-cd memory-rft
+# Process podcast transcripts and build vector index
+cd dataset_utils
+python transcript_to_chunks.py
+python create_embeddings.py
+python ingest_to_lancedb.py
 ```
 
-2. **Initialize the project with uv:**
+### 2. Launch Training
 ```bash
-uv init
+# Start PPO training with in-CoT tool execution
+python run_podcast_ppo_with_cot_tools.py
 ```
 
-3. **Install dependencies:**
-```bash
-uv add requests beautifulsoup4 openai lancedb fastapi uvicorn python-multipart jinja2 tqdm
-```
+The training will:
+- Patch the SGLang rollout to use our custom `CoTToolSGLangRollout`
+- Enable real tool calls during model generation
+- Train the model to use memory retrieval effectively in its reasoning
 
-4. **Set up environment variables:**
-```bash
-echo "OPENAI_API_KEY=your-openai-api-key-here" > .env
-```
+### 3. Configuration
+Key settings in `configs/podcast_ppo_working.yaml`:
+- `max_tool_calls_per_cot: 5` - Limit tool calls per reasoning chain
+- `max_segment_length: 256` - Tokens generated before checking for tool calls
+- Custom reward function weights CoT quality and tool usage
 
-## 🔄 Usage Pipeline
+## Training Approach
 
-### Step 1: Scrape Transcripts
-```bash
-.venv/bin/python3 transcript_scraper.py
-```
-- Scrapes latest 100 episode transcripts from lexfridman.com
-- Outputs individual JSON files in `lex_fridman_transcripts/`
-- Creates summary with metadata
+The model learns through PPO to:
+1. **Identify** when external memory is needed during reasoning
+2. **Formulate** appropriate search queries for the memory system  
+3. **Integrate** retrieved information into ongoing CoT reasoning
+4. **Generate** high-quality responses using both internal knowledge and retrieved context
 
-### Step 2: Convert to Chunks
-```bash
-.venv/bin/python3 transcript_to_chunks.py
-```
-- Converts transcripts to vector database format
-- Each chunk contains: episode, speaker, transcript, time
-- Outputs XML-formatted chunks in `lex_fridman_chunks/`
+This creates an agent that can dynamically access external memory while maintaining natural reasoning flow.
 
-### Step 3: Generate Embeddings
-```bash
-source .env && export OPENAI_API_KEY && .venv/bin/python3 create_embeddings.py
-```
-- Creates OpenAI embeddings for all chunks using batch processing
-- Uses `text-embedding-3-small` model (1536 dimensions)
-- Outputs embedding files in `lex_fridman_embeddings/`
-
-### Step 4: Ingest to LanceDB
-```bash
-.venv/bin/python3 ingest_to_lancedb.py
-```
-- Loads all embeddings into LanceDB vector database
-- Creates optimized indexes for fast similarity search
-- Database stored in `lex_fridman_vectordb/`
-
-### Step 5: Start Web Interface
-```bash
-source .env && export OPENAI_API_KEY && .venv/bin/python3 -m uvicorn api:app --host 0.0.0.0 --port 8000 --reload
-```
-- Starts FastAPI web server on http://localhost:8000
-- Provides both web interface and REST API
-
-## 🌐 Web Interface
-
-Visit `http://localhost:8000` to access the search interface.
-
-### Features:
-- **Semantic Search**: Enter natural language queries
-- **Episode Filter**: Search within specific episodes
-- **Speaker Filter**: Find content from specific speakers
-- **Adjustable Results**: Choose 5-50 results per search
-- **Real-time Stats**: Search timing and result counts
-- **Responsive Design**: Works on desktop and mobile
-
-### Example Searches:
-- "artificial intelligence consciousness"
-- "meaning of life philosophy"
-- "future of technology"
-- "quantum physics simulation"
-
-## 🔌 API Endpoints
-
-### Search Endpoints
-- `POST /search` - Semantic search with JSON request/response
-- `POST /search_form` - Form-based search for web interface
-
-### Data Endpoints
-- `GET /api/episodes` - List all available episodes
-- `GET /api/speakers` - List all speakers
-- `GET /api/stats` - Database statistics
-
-### Example API Usage:
-```bash
-curl -X POST "http://localhost:8000/search" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "query": "artificial intelligence",
-       "limit": 10,
-       "episode_filter": null,
-       "speaker_filter": null
-     }'
-```
-
-## 📊 Performance Metrics
-
-### Embedding Generation:
-- **52,827 chunks** processed in **15.3 minutes**
-- **3,455 chunks/minute** using batch processing
-- **98 episodes** with 100% success rate
-
-### Database Ingestion:
-- **52,827 records** inserted in **0.3 minutes**
-- **177,528 records/minute** insertion rate
-- **Zero failed ingestions**
-
-### Search Performance:
-- **Sub-second** semantic search response times
-- **Vector similarity** using optimized LanceDB indexes
-- **Real-time filtering** by episode and speaker
-
-## 🗂️ Project Structure
+## Architecture
 
 ```
-memory-rft/
-├── transcript_scraper.py          # Scrapes podcast transcripts
-├── transcript_to_chunks.py        # Converts transcripts to chunks
-├── create_embeddings.py           # Generates OpenAI embeddings
-├── ingest_to_lancedb.py          # Loads data into LanceDB
-├── api.py                        # FastAPI web application
-├── test_transcript_scraper.py    # Unit tests
-├── templates/
-│   └── index.html               # Web interface template
-├── lex_fridman_transcripts/     # Individual transcript JSON files
-├── lex_fridman_chunks/          # Chunked transcript files
-├── lex_fridman_embeddings/      # Embedding JSON files
-├── lex_fridman_vectordb/        # LanceDB database files
-├── .env                         # Environment variables
-├── pyproject.toml              # Project dependencies
-└── README.md                   # This file
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   PPO Training  │───▶│  CoT Generation  │───▶│ Memory Retrieval│
+│   (veRL)        │    │  with Tools      │    │   (LanceDB)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌──────────────────┐             │
+         └──────────────│  Reward Function │◀────────────┘
+                        │   (CoT + Tools)  │
+                        └──────────────────┘
 ```
 
-## 🧪 Testing
+## Files Structure
 
-Run the test suite:
-```bash
-.venv/bin/python3 test_transcript_scraper.py
-```
+- `run_podcast_ppo_with_cot_tools.py` - Main training script with custom rollout
+- `custom_sglang_rollout.py` - In-CoT tool execution implementation  
+- `configs/podcast_ppo_working.yaml` - PPO training configuration
+- `dataset_utils/` - Memory system components (transcripts, embeddings, QA generation)
+- `podcast_reward_with_tools.py` - Custom reward function for tool usage
 
-Tests cover:
-- Transcript URL extraction
-- HTML parsing
-- Data validation
-- Error handling
+## Requirements
 
-## 🔧 Configuration
-
-### Environment Variables:
-- `OPENAI_API_KEY` - Required for embedding generation and semantic search
-
-### Customizable Parameters:
-- **Embedding Model**: Change in `create_embeddings.py` (default: `text-embedding-3-small`)
-- **Batch Size**: Adjust in embedding generation (default: 100)
-- **Search Limits**: Modify in web interface (5-50 results)
-- **Database Path**: Configure in ingestion script
-
-## 🚀 Deployment
-
-### Local Development:
-```bash
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Production:
-```bash
-uvicorn api:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-### Docker (optional):
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## 🙏 Acknowledgments
-
-- **Lex Fridman** for the amazing podcast content
-- **OpenAI** for the embedding models
-- **LanceDB** for the vector database
-- **FastAPI** for the web framework
-
-## 📞 Support
-
-For issues, questions, or contributions:
-- Create an issue on GitHub
-- Check the existing documentation
-- Review the test suite for examples
-
----
-
-**Built with ❤️ using Python, OpenAI, LanceDB, and FastAPI**
+- veRL framework
+- SGLang for model serving
+- LanceDB for vector storage
+- DeepSeek model access
+- Multi-GPU setup (8 GPUs recommended)
